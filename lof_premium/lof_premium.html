@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LOF基金溢价率追踪</title>
+    <style>
+        :root {
+            --color-primary: #0972d3;
+            --color-primary-hover: #065299;
+            --color-primary-active: #033160;
+            --color-background: #f2f3f3;
+            --color-surface: #ffffff;
+            --color-text-primary: #000716;
+            --color-text-secondary: #5f6b7a;
+            --color-border: #d5dbdb;
+            --color-error: #d91515;
+            --color-error-bg: #fff5f5;
+            --color-row-alt: #f9fafa;
+            --color-row-hover: #f2f8fd;
+            --font-family: "Amazon Ember", "Helvetica Neue", Roboto, Arial, sans-serif;
+            --radius-container: 8px;
+            --radius-button: 4px;
+            --space-xs: 4px; --space-s: 8px; --space-m: 16px; --space-l: 24px; --space-xl: 32px;
+        }
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: var(--font-family); background: var(--color-background); color: var(--color-text-primary); line-height: 1.5; }
+        .container { max-width: 1200px; margin: 0 auto; padding: var(--space-l); }
+        .header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--space-m); margin-bottom: var(--space-l); }
+        .header h1 { font-size: 24px; font-weight: 700; }
+        .header-actions { display: flex; align-items: center; gap: var(--space-m); }
+        #last-updated { font-size: 13px; color: var(--color-text-secondary); }
+        #refresh-btn {
+            display: inline-flex; align-items: center; padding: var(--space-s) var(--space-m);
+            font-family: var(--font-family); font-size: 14px; font-weight: 700; color: #fff;
+            background: var(--color-primary); border: 2px solid var(--color-primary);
+            border-radius: var(--radius-button); cursor: pointer; transition: background .15s;
+        }
+        #refresh-btn:hover { background: var(--color-primary-hover); border-color: var(--color-primary-hover); }
+        #refresh-btn:active { background: var(--color-primary-active); border-color: var(--color-primary-active); }
+        #refresh-btn:disabled { background: var(--color-text-secondary); border-color: var(--color-text-secondary); cursor: not-allowed; opacity: .7; }
+
+        .table-container { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-container); overflow: hidden; }
+        table { width: 100%; border-collapse: collapse; font-size: 14px; }
+        thead { background: #fafafa; }
+        th { padding: 10px var(--space-m); text-align: left; font-weight: 700; font-size: 13px; color: var(--color-text-secondary); border-bottom: 2px solid var(--color-border); white-space: nowrap; user-select: none; }
+        td { padding: 10px var(--space-m); border-bottom: 1px solid #eaeded; }
+        tbody tr:hover { background: var(--color-row-hover); }
+        tbody tr:nth-child(even) { background: var(--color-row-alt); }
+        tbody tr:nth-child(even):hover { background: var(--color-row-hover); }
+        .sortable { cursor: pointer; color: var(--color-primary); }
+        .sortable:hover { text-decoration: underline; }
+        .sort-arrow { font-size: 11px; opacity: 0.4; }
+        .sortable.active .sort-arrow { opacity: 1; }
+        .premium-cell { font-weight: 700; color: #d91515; }
+
+        #loading-indicator { display: flex; flex-direction: column; align-items: center; padding: 48px 0; gap: var(--space-m); color: var(--color-text-secondary); }
+        .spinner { width: 32px; height: 32px; border: 3px solid var(--color-border); border-top-color: var(--color-primary); border-radius: 50%; animation: spin .8s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        #error-message { background: var(--color-error-bg); color: var(--color-error); border: 1px solid #fcc; border-radius: var(--radius-container); padding: var(--space-m); margin-bottom: var(--space-m); font-size: 14px; }
+        #empty-state { text-align: center; padding: 48px 0; color: var(--color-text-secondary); font-size: 14px; }
+</style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>LOF基金溢价率追踪</h1>
+            <div class="header-actions">
+                <span id="last-updated"></span>
+                <button id="refresh-btn">刷新数据</button>
+            </div>
+        </div>
+        <div id="error-message" style="display:none;"></div>
+        <div class="table-container">
+            <table id="data-table">
+                <thead><tr>
+                    <th class="sortable" data-key="code">基金代码 <span class="sort-arrow"></span></th>
+                    <th class="sortable" data-key="name">基金名称 <span class="sort-arrow"></span></th>
+                    <th class="sortable" data-key="nav">T-1净值 <span class="sort-arrow"></span></th>
+                    <th class="sortable" data-key="closePrice">T-1收盘价 <span class="sort-arrow"></span></th>
+                    <th class="sortable" data-key="premiumRate">T-1溢价率 <span class="sort-arrow">▼</span></th>
+                    <th class="sortable" data-key="market">市场 <span class="sort-arrow"></span></th>
+                    <th class="sortable" data-key="applyStatus">申购状态 <span class="sort-arrow"></span></th>
+                    <th class="sortable" data-key="applyFee">申购费率 <span class="sort-arrow"></span></th>
+                </tr></thead>
+                <tbody id="table-body"></tbody>
+            </table>
+            <div id="loading-indicator" style="display:none;"><div class="spinner"></div><p>数据加载中...</p></div>
+            <div id="empty-state" style="display:none;"><p>暂无数据，请点击刷新按钮重试</p></div>
+        </div>
+    </div>
+
+    <script>
+    // ===== 固定基金列表 =====
+    const FUND_LIST = [
+        { code: '160416', name: '华安标普全球石油指数(LOF)A', market: '商品' },
+        { code: '501018', name: '南方原油LOF', market: '商品' },
+        { code: '161129', name: '易方达原油LOF', market: '商品' },
+        { code: '160723', name: '嘉实原油LOF', market: '商品' },
+        { code: '162719', name: '广发道琼斯石油指数(LOF)A', market: '商品' },
+        { code: '162411', name: '华宝标普油气上游股票(LOF)A', market: '商品' },
+        { code: '163208', name: '诺安油气能源(LOF)', market: '商品' },
+        { code: '161226', name: '国投白银LOF', market: '商品' },
+        { code: '160719', name: '嘉实黄金LOF', market: '商品' },
+        { code: '161116', name: '易方达黄金主题LOF', market: '商品' },
+        { code: '502003', name: '易方达中证军工(LOF)A', market: 'A股' },
+        { code: '501019', name: '国泰国证航天军工指数(LOF)A', market: 'A股' },
+        { code: '160643', name: '鹏华空天军工指数(LOF)A', market: 'A股' },
+        { code: '161724', name: '招商中证煤炭等权指数(LOF)A', market: 'A股' },
+        { code: '502056', name: '广发中证医疗ETF联接(LOF)A', market: 'A股' },
+        { code: '161124', name: '港股小盘LOF', market: '亚洲' },
+        { code: '168105', name: '九泰泰富灵活配置混合(LOF)A', market: 'A股' },
+        { code: '501201', name: '红土创新科技创新股票(LOF)A', market: 'A股' },
+        { code: '161125', name: '标普500LOF', market: '欧美' },
+        { code: '161128', name: '标普信息科技LOF', market: '欧美' },
+        { code: '161130', name: '纳斯达克100LOF', market: '欧美' }
+    ];
+
+    // ===== 申购信息（来自天天基金 2026-03-11 查询） =====
+    const FUND_INFO = {
+        '160416': { applyStatus: '暂停申购', applyFee: '1.20%' },
+        '501018': { applyStatus: '暂停申购', applyFee: '1.20%' },
+        '161129': { applyStatus: '暂停申购', applyFee: '1.20%' },
+        '160723': { applyStatus: '暂停申购', applyFee: '1.20%' },
+        '162719': { applyStatus: '暂停申购', applyFee: '1.20%' },
+        '162411': { applyStatus: '暂停申购', applyFee: '1.50%' },
+        '163208': { applyStatus: '暂停申购', applyFee: '1.50%' },
+        '161226': { applyStatus: '暂停申购', applyFee: '1.00%' },
+        '160719': { applyStatus: '暂停申购', applyFee: '0.80%' },
+        '161116': { applyStatus: '暂停申购', applyFee: '1.00%' },
+        '502003': { applyStatus: '开放申购', applyFee: '1.00%' },
+        '501019': { applyStatus: '开放申购', applyFee: '1.20%' },
+        '160643': { applyStatus: '开放申购', applyFee: '1.20%' },
+        '161724': { applyStatus: '开放申购', applyFee: '1.00%' },
+        '502056': { applyStatus: '开放申购', applyFee: '0.50%' },
+        '161124': { applyStatus: '限大额(1000元)', applyFee: '1.20%' },
+        '168105': { applyStatus: '开放申购', applyFee: '1.20%' },
+        '501201': { applyStatus: '开放申购', applyFee: '1.50%' },
+        '161125': { applyStatus: '限大额(10元)', applyFee: '1.20%' },
+        '161128': { applyStatus: '限大额(10元)', applyFee: '1.20%' },
+        '161130': { applyStatus: '限大额(10元)', applyFee: '1.20%' }
+    };
+
+    // ===== 状态 =====
+    var sortKey = 'premiumRate';
+    var sortDirection = 'desc';
+    var currentRecords = [];
+
+    // ===== DOM 引用 =====
+    var tableBody = document.getElementById('table-body');
+    var loadingIndicator = document.getElementById('loading-indicator');
+    var emptyState = document.getElementById('empty-state');
+    var errorMessage = document.getElementById('error-message');
+    var refreshBtn = document.getElementById('refresh-btn');
+    var lastUpdated = document.getElementById('last-updated');
+    var allHeaders = document.querySelectorAll('th.sortable');
+
+    // ===== secid 映射：深圳(16xxxx)=0, 上海(50xxxx/51xxxx)=1 =====
+    function getSecId(code) {
+        if (code.startsWith('5')) return '1.' + code;
+        return '0.' + code;
+    }
+
+    // ===== 通过天天基金移动端 API 批量获取 T-1 净值（JSONP，一次请求） =====
+    async function fetchAllNavs() {
+        var codes = FUND_LIST.map(function(f) { return f.code; }).join(',');
+        var cbName = '_navCallback_' + Date.now();
+        var url = 'https://fundmobapi.eastmoney.com/FundMNewApi/FundMNFInfo?pageIndex=1&pageSize=30&plat=Android&appType=ttjj&product=EFund&Version=1&deviceid=1&Fcodes=' + codes + '&callback=' + cbName;
+
+        return new Promise(function(resolve, reject) {
+            var script = document.createElement('script');
+            var settled = false;
+            var timer = setTimeout(function() {
+                if (!settled) { settled = true; cleanup(); reject(new Error('净值请求超时')); }
+            }, 15000);
+
+            function cleanup() {
+                clearTimeout(timer);
+                delete window[cbName];
+                if (script.parentNode) script.remove();
+            }
+
+            window[cbName] = function(json) {
+                if (settled) return;
+                settled = true;
+                cleanup();
+                var results = {};
+                if (json && json.Datas) {
+                    json.Datas.forEach(function(d) {
+                        if (d.FCODE && d.NAV) {
+                            results[d.FCODE] = { code: d.FCODE, nav: parseFloat(d.NAV), navDate: d.PDATE };
+                        }
+                    });
+                }
+                resolve(results);
+            };
+
+            script.src = url;
+            script.onerror = function() {
+                if (!settled) { settled = true; cleanup(); reject(new Error('净值脚本加载失败')); }
+            };
+            document.body.appendChild(script);
+        });
+    }
+
+    // ===== 通过 push2 fetch 批量获取 T-1 收盘价（f18 昨收） =====
+    async function fetchMarketPrices() {
+        var secids = FUND_LIST.map(function(f) { return getSecId(f.code); }).join(',');
+        var url = 'https://push2.eastmoney.com/api/qt/ulist.np/get?fields=f12,f14,f2,f18&secids=' + secids;
+        var resp = await fetch(url);
+        var json = await resp.json();
+        var prices = {};
+        if (json.data && json.data.diff) {
+            json.data.diff.forEach(function(item) {
+                var code = item.f12;
+                // f18 = 昨收（T-1收盘价），f2 = 现价，都需要除以 1000
+                var closePrice = (item.f18 != null && item.f18 !== '-') ? item.f18 / 1000 : null;
+                prices[code] = { closePrice: closePrice };
+            });
+        }
+        return prices;
+    }
+
+    // ===== 合并数据并计算溢价率 =====
+    function buildRecords(navs, prices) {
+        var records = [];
+        for (var i = 0; i < FUND_LIST.length; i++) {
+            var fund = FUND_LIST[i];
+            var navData = navs[fund.code];
+            if (!navData) continue;
+
+            var nav = navData.nav;
+            if (!nav || nav <= 0) continue;
+
+            var priceData = prices[fund.code];
+            var closePrice = priceData ? priceData.closePrice : null;
+            var premiumRate = (closePrice != null && nav > 0) ? ((closePrice - nav) / nav) * 100 : null;
+            var info = FUND_INFO[fund.code] || { applyStatus: '-', applyFee: '-' };
+
+            records.push({
+                code: fund.code,
+                name: fund.name,
+                nav: nav,
+                closePrice: closePrice,
+                premiumRate: premiumRate,
+                market: fund.market,
+                applyStatus: info.applyStatus,
+                applyFee: info.applyFee
+            });
+        }
+        return records;
+    }
+
+    // ===== 排序 =====
+    var numericKeys = { nav: true, closePrice: true, premiumRate: true };
+    function sortRecords(records, key, direction) {
+        return records.slice().sort(function(a, b) {
+            var va = a[key], vb = b[key];
+            if (numericKeys[key]) {
+                va = va != null ? va : -Infinity;
+                vb = vb != null ? vb : -Infinity;
+            } else {
+                va = va || '';
+                vb = vb || '';
+            }
+            var cmp;
+            if (typeof va === 'number' && typeof vb === 'number') {
+                cmp = va - vb;
+            } else {
+                cmp = String(va).localeCompare(String(vb), 'zh-CN');
+            }
+            return direction === 'desc' ? -cmp : cmp;
+        });
+    }
+
+    // 更新表头排序箭头
+    function updateSortIndicators() {
+        allHeaders.forEach(function(th) {
+            var arrow = th.querySelector('.sort-arrow');
+            if (th.getAttribute('data-key') === sortKey) {
+                th.classList.add('active');
+                arrow.textContent = sortDirection === 'desc' ? '▼' : '▲';
+            } else {
+                th.classList.remove('active');
+                arrow.textContent = '';
+            }
+        });
+    }
+
+    // ===== 渲染表格 =====
+    function renderTable(records) {
+        tableBody.innerHTML = '';
+        if (records.length === 0) {
+            emptyState.style.display = 'block';
+            return;
+        }
+        emptyState.style.display = 'none';
+        for (var i = 0; i < records.length; i++) {
+            var r = records[i];
+            var tr = document.createElement('tr');
+            var premiumStr = r.premiumRate != null ? r.premiumRate.toFixed(2) + '%' : '-';
+            var premiumColor = r.premiumRate != null ? (r.premiumRate > 0 ? '#d91515' : r.premiumRate < 0 ? '#067d17' : '#000716') : '#5f6b7a';
+            var closePriceStr = r.closePrice != null ? r.closePrice.toFixed(4) : '-';
+            tr.innerHTML =
+                '<td>' + r.code + '</td>' +
+                '<td>' + r.name + '</td>' +
+                '<td>' + r.nav.toFixed(4) + '</td>' +
+                '<td>' + closePriceStr + '</td>' +
+                '<td style="font-weight:700;color:' + premiumColor + '">' + premiumStr + '</td>' +
+                '<td>' + r.market + '</td>' +
+                '<td>' + r.applyStatus + '</td>' +
+                '<td>' + r.applyFee + '</td>';
+            tableBody.appendChild(tr);
+        }
+    }
+
+    // ===== UI 状态控制 =====
+    function showLoading() {
+        loadingIndicator.style.display = 'flex';
+        emptyState.style.display = 'none';
+        errorMessage.style.display = 'none';
+        tableBody.innerHTML = '';
+        refreshBtn.disabled = true;
+    }
+
+    function hideLoading() {
+        loadingIndicator.style.display = 'none';
+        refreshBtn.disabled = false;
+    }
+
+    function showError(msg) {
+        errorMessage.textContent = '提示：' + msg;
+        errorMessage.style.display = 'block';
+    }
+
+    function updateTimestamp() {
+        var now = new Date();
+        function pad(n) { return String(n).padStart(2, '0'); }
+        lastUpdated.textContent = '最后更新: ' + now.getFullYear() + '-' + pad(now.getMonth() + 1) + '-' + pad(now.getDate()) + ' ' + pad(now.getHours()) + ':' + pad(now.getMinutes()) + ':' + pad(now.getSeconds());
+    }
+
+    // ===== 主流程 =====
+    async function loadData() {
+        showLoading();
+        console.log('[loadData] 开始加载...');
+        try {
+            // 先批量获取现价（fetch很快）
+            var prices = {};
+            try {
+                console.log('[loadData] 获取现价...');
+                prices = await fetchMarketPrices();
+                console.log('[loadData] 现价获取完成, 数量:', Object.keys(prices).length);
+            } catch (e) {
+                console.warn('[loadData] 获取现价失败:', e.message);
+            }
+
+            // 再串行获取净值（JSONP必须串行）
+            console.log('[loadData] 开始获取净值...');
+            var navs = await fetchAllNavs();
+            console.log('[loadData] 净值获取完成, 数量:', Object.keys(navs).length);
+
+            if (Object.keys(navs).length === 0) {
+                showError('净值数据获取失败，请检查网络后重试');
+                hideLoading();
+                return;
+            }
+
+            var allRecords = buildRecords(navs, prices);
+            console.log('[loadData] 记录数:', allRecords.length);
+            currentRecords = sortRecords(allRecords, sortKey, sortDirection);
+            renderTable(currentRecords);
+            updateTimestamp();
+        } catch (e) {
+            showError('数据获取失败: ' + e.message);
+            console.error('[loadData] 异常:', e);
+        } finally {
+            hideLoading();
+        }
+    }
+
+    // ===== 排序切换（所有列） =====
+    allHeaders.forEach(function(th) {
+        th.addEventListener('click', function() {
+            var key = th.getAttribute('data-key');
+            if (sortKey === key) {
+                sortDirection = sortDirection === 'desc' ? 'asc' : 'desc';
+            } else {
+                sortKey = key;
+                sortDirection = numericKeys[key] ? 'desc' : 'asc';
+            }
+            updateSortIndicators();
+            currentRecords = sortRecords(currentRecords, sortKey, sortDirection);
+            renderTable(currentRecords);
+        });
+    });
+
+    // ===== 刷新按钮 =====
+    refreshBtn.addEventListener('click', loadData);
+
+    // ===== 页面加载自动获取数据 =====
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', loadData);
+    } else {
+        loadData();
+    }
+    </script>
+</body>
+</html>
