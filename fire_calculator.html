@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FIRE 退休计算器</title>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        body { background: #f7f8fa; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: #333; line-height: 1.5; }
+        .container { max-width: 720px; margin: 0 auto; padding: 20px; }
+
+        /* Title */
+        .page-title { font-size: 24px; font-weight: 700; margin-bottom: 16px; }
+
+        /* Input Panel */
+        .input-panel { background: #fff; border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+        .input-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+        .input-row:last-child { margin-bottom: 0; }
+        .input-label { color: #666; font-size: 14px; }
+        .input-field { width: 140px; text-align: right; border: 1px solid #eee; border-radius: 8px; padding: 6px 10px; font-size: 14px; outline: none; transition: border-color 0.2s; }
+        .input-field:focus { border-color: #1890ff; }
+        .input-field.error { border-color: #ff4d4f; }
+        .input-error { color: #ff4d4f; font-size: 12px; display: none; margin-top: 2px; text-align: right; }
+
+        /* Conclusion */
+        .conclusion { background: #fff; border-radius: 12px; padding: 20px; margin-bottom: 16px; text-align: center; }
+        .conclusion.fail { border-left: 4px solid #ff4d4f; }
+        .conclusion.safe { border-left: 4px solid #52c41a; }
+        .conclusion.warning { border-left: 4px solid #faad14; }
+        .conclusion-title { font-size: 22px; font-weight: 600; margin-bottom: 6px; }
+        .conclusion-sub { color: #666; }
+
+        /* Chart Card */
+        .chart-card { background: #fff; border-radius: 12px; padding: 12px; margin-bottom: 16px; }
+        #asset-chart { width: 100%; height: 300px; }
+
+        /* Metrics */
+        .metrics { display: flex; justify-content: space-between; background: #fff; border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+        .metric-item { text-align: center; flex: 1; }
+        .metric-value { font-size: 18px; font-weight: 600; }
+        .metric-label { font-size: 12px; color: #888; margin-top: 4px; }
+
+        /* Suggestions */
+        .suggestions { background: #fff; border-radius: 12px; padding: 16px; }
+        .suggestions-title { font-size: 16px; font-weight: 600; margin-bottom: 12px; }
+        .suggestion-item { background: #f5f7fa; border-radius: 8px; padding: 10px; margin-bottom: 10px; }
+        .suggestion-item:last-child { margin-bottom: 0; }
+        .suggestion-highlight { color: #1890ff; font-weight: 500; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- 标题 -->
+        <h1 class="page-title">FIRE 退休计算器</h1>
+
+        <!-- Input_Panel -->
+        <div class="input-panel" id="input-panel">
+            <div class="input-row">
+                <label class="input-label" for="currentAsset">当前资产</label>
+                <div>
+                    <input class="input-field" type="number" id="currentAsset" value="5000000">
+                    <div class="input-error" id="currentAsset-error"></div>
+                </div>
+            </div>
+            <div class="input-row">
+                <label class="input-label" for="annualExpense">年支出</label>
+                <div>
+                    <input class="input-field" type="number" id="annualExpense" value="80000">
+                    <div class="input-error" id="annualExpense-error"></div>
+                </div>
+            </div>
+            <div class="input-row">
+                <label class="input-label" for="returnRate">投资收益率(%)</label>
+                <div>
+                    <input class="input-field" type="number" id="returnRate" value="2" step="0.1">
+                    <div class="input-error" id="returnRate-error"></div>
+                </div>
+            </div>
+            <div class="input-row">
+                <label class="input-label" for="inflationRate">通胀率(%)</label>
+                <div>
+                    <input class="input-field" type="number" id="inflationRate" value="2.5" step="0.1">
+                    <div class="input-error" id="inflationRate-error"></div>
+                </div>
+            </div>
+            <div class="input-row">
+                <label class="input-label" for="passiveIncome">被动收入</label>
+                <div>
+                    <input class="input-field" type="number" id="passiveIncome" value="0">
+                    <div class="input-error" id="passiveIncome-error"></div>
+                </div>
+            </div>
+            <div class="input-row">
+                <label class="input-label" for="currentAge">当前年龄</label>
+                <div>
+                    <input class="input-field" type="number" id="currentAge" value="36" step="1">
+                    <div class="input-error" id="currentAge-error"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Conclusion_Display -->
+        <div class="conclusion" id="conclusion">
+            <div class="conclusion-title" id="conclusion-title"></div>
+            <div class="conclusion-sub" id="conclusion-sub"></div>
+        </div>
+
+        <!-- Asset_Chart -->
+        <div class="chart-card">
+            <div id="asset-chart"></div>
+        </div>
+
+        <!-- Metrics_Display -->
+        <div class="metrics" id="metrics">
+            <div class="metric-item">
+                <div class="metric-value" id="metric-min-asset">--</div>
+                <div class="metric-label">最低资产</div>
+            </div>
+            <div class="metric-item">
+                <div class="metric-value" id="metric-min-asset-age">--</div>
+                <div class="metric-label">最低资产年龄</div>
+            </div>
+            <div class="metric-item">
+                <div class="metric-value" id="metric-ruin-age">--</div>
+                <div class="metric-label">破产年龄</div>
+            </div>
+            <div class="metric-item">
+                <div class="metric-value" id="metric-years-left">--</div>
+                <div class="metric-label">可支撑年限</div>
+            </div>
+        </div>
+
+        <!-- 优化建议区 -->
+        <div class="suggestions" id="suggestions">
+            <div class="suggestions-title">优化建议</div>
+            <div id="suggestions-list"></div>
+        </div>
+    </div>
+
+    <script>
+    // ============================================================
+    // Pure functions (DOM-independent, testable in Node.js)
+    // ============================================================
+
+    /**
+     * 校验单个输入参数
+     * @param {string} field - 字段名
+     * @param {number} value - 输入值
+     * @returns {{ valid: boolean, error: string|null }}
+     */
+    function validateField(field, value) {
+        if (typeof value !== 'number' || isNaN(value)) {
+            const labels = {
+                currentAsset: '当前资产必须大于0',
+                annualExpense: '年支出必须大于0',
+                returnRate: '投资收益率必须在0-20%之间',
+                inflationRate: '通胀率必须在0-10%之间',
+                currentAge: '年龄必须在0-80之间的整数',
+                passiveIncome: '被动收入不能为负数'
+            };
+            return { valid: false, error: labels[field] || '无效输入' };
+        }
+        switch (field) {
+            case 'currentAsset':
+                return value > 0
+                    ? { valid: true, error: null }
+                    : { valid: false, error: '当前资产必须大于0' };
+            case 'annualExpense':
+                return value > 0
+                    ? { valid: true, error: null }
+                    : { valid: false, error: '年支出必须大于0' };
+            case 'returnRate':
+                return value >= 0 && value <= 20
+                    ? { valid: true, error: null }
+                    : { valid: false, error: '投资收益率必须在0-20%之间' };
+            case 'inflationRate':
+                return value >= 0 && value <= 10
+                    ? { valid: true, error: null }
+                    : { valid: false, error: '通胀率必须在0-10%之间' };
+            case 'currentAge':
+                return Number.isInteger(value) && value >= 0 && value <= 80
+                    ? { valid: true, error: null }
+                    : { valid: false, error: '年龄必须在0-80之间的整数' };
+            case 'passiveIncome':
+                return value >= 0
+                    ? { valid: true, error: null }
+                    : { valid: false, error: '被动收入不能为负数' };
+            default:
+                return { valid: true, error: null };
+        }
+    }
+
+    /**
+     * 校验所有参数
+     * @param {Object} params
+     * @returns {{ valid: boolean, errors: Record<string, string> }}
+     */
+    function validateAll(params) {
+        const errors = {};
+        const fields = ['currentAsset', 'annualExpense', 'returnRate', 'inflationRate', 'currentAge', 'passiveIncome'];
+        for (const field of fields) {
+            const result = validateField(field, params[field]);
+            if (!result.valid) {
+                errors[field] = result.error;
+            }
+        }
+        return { valid: Object.keys(errors).length === 0, errors };
+    }
+
+    /**
+     * 执行年度递推模拟
+     * @param {Object} params - 用户输入参数
+     * @returns {Object} SimulationResult
+     */
+    function simulate(params) {
+        const { currentAsset, annualExpense, returnRate, inflationRate, passiveIncome, currentAge } = params;
+        const yearly = [{ age: currentAge, asset: currentAsset }];
+        let asset = currentAsset;
+        let expense = annualExpense;
+        let ruinAge = null;
+        let minAsset = currentAsset;
+        let minAssetAge = currentAge;
+
+        for (let age = currentAge + 1; age <= 100; age++) {
+            expense = expense * (1 + inflationRate);
+            const investReturn = asset * returnRate;
+            asset = asset + investReturn + passiveIncome - expense;
+            if (asset <= 0) {
+                asset = 0;
+                if (ruinAge === null) ruinAge = age;
+            }
+            yearly.push({ age, asset });
+            if (asset < minAsset) {
+                minAsset = asset;
+                minAssetAge = age;
+            }
+        }
+
+        return { yearly, ruinAge, minAsset, minAssetAge };
+    }
+
+    /**
+     * 根据模拟结果判定退休状态
+     * @param {Object} result - SimulationResult
+     * @returns {{ status: string, yearsLeft: number|null, ruinAge: number|null }}
+     */
+    function determineStatus(result) {
+        const currentAge = result.yearly[0].age;
+        if (result.ruinAge === null) {
+            return { status: 'safe', yearsLeft: null, ruinAge: null };
+        }
+        if (result.ruinAge > 90) {
+            return { status: 'warning', yearsLeft: result.ruinAge - currentAge, ruinAge: result.ruinAge };
+        }
+        return { status: 'fail', yearsLeft: result.ruinAge - currentAge, ruinAge: result.ruinAge };
+    }
+
+    /**
+     * 生成优化建议
+     * @param {Object} params - 原始参数
+     * @param {Object} baseResult - 原始模拟结果
+     * @returns {Array} Suggestion[]
+     */
+    function generateSuggestions(params, baseResult) {
+        const suggestions = [];
+        const baseYearsLeft = baseResult.ruinAge === null ? Infinity : baseResult.ruinAge - params.currentAge;
+
+        // Expense sensitivity: reduce annual expense by 10000
+        if (params.annualExpense - 10000 > 0) {
+            const newParams = Object.assign({}, params, { annualExpense: params.annualExpense - 10000 });
+            const newResult = simulate(newParams);
+            const newYearsLeft = newResult.ruinAge === null ? Infinity : newResult.ruinAge - params.currentAge;
+            const delta = newYearsLeft - baseYearsLeft;
+            suggestions.push({
+                type: 'expense',
+                description: '每年少花1万',
+                newYearsLeft: newYearsLeft === Infinity ? null : newYearsLeft,
+                delta: (newYearsLeft === Infinity || baseYearsLeft === Infinity) ? null : delta
+            });
+        }
+
+        // Return rate sensitivity: increase return rate by 1%
+        if (params.returnRate + 0.01 <= 0.20) {
+            const newParams = Object.assign({}, params, { returnRate: params.returnRate + 0.01 });
+            const newResult = simulate(newParams);
+            const newYearsLeft = newResult.ruinAge === null ? Infinity : newResult.ruinAge - params.currentAge;
+            const delta = newYearsLeft - baseYearsLeft;
+            suggestions.push({
+                type: 'return',
+                description: '收益率+1%',
+                newYearsLeft: newYearsLeft === Infinity ? null : newYearsLeft,
+                delta: (newYearsLeft === Infinity || baseYearsLeft === Infinity) ? null : delta
+            });
+        }
+
+        return suggestions;
+    }
+
+    /**
+     * 创建防抖函数
+     * @param {Function} fn
+     * @param {number} delay
+     * @returns {Function}
+     */
+    function debounce(fn, delay) {
+        let timer = null;
+        return function(...args) {
+            clearTimeout(timer);
+            timer = setTimeout(() => fn.apply(this, args), delay);
+        };
+    }
+
+    // ============================================================
+    // DOM interaction & rendering (browser-only)
+    // ============================================================
+
+    /**
+     * 渲染结论区
+     * @param {{ status: string, yearsLeft: number|null, ruinAge: number|null }} statusInfo
+     */
+    function renderConclusion(statusInfo) {
+        var el = document.getElementById('conclusion');
+        el.classList.remove('safe', 'fail', 'warning');
+        el.classList.add(statusInfo.status);
+
+        var titleEl = document.getElementById('conclusion-title');
+        var subEl = document.getElementById('conclusion-sub');
+
+        var titles = {
+            fail: '❌ 你还不能退休',
+            safe: '✅ 你可以退休',
+            warning: '⚠️ 勉强可以退休'
+        };
+        titleEl.textContent = titles[statusInfo.status];
+
+        subEl.textContent = statusInfo.ruinAge !== null
+            ? '资金将在 ' + statusInfo.ruinAge + ' 岁耗尽（还能撑 ' + statusInfo.yearsLeft + ' 年）'
+            : '资产可支撑终身';
+    }
+
+    /**
+     * 使用 ECharts 渲染资产变化折线图
+     * @param {Object} result - SimulationResult
+     */
+    function renderChart(result) {
+        var container = document.getElementById('asset-chart');
+        var chart = echarts.getInstanceByDom(container) || echarts.init(container);
+        var data = result.yearly;
+
+        var option = {
+            tooltip: {
+                trigger: 'axis',
+                formatter: function(params) {
+                    var p = params[0];
+                    return '年龄：' + p.axisValue + '岁<br/>资产：' + (p.data / 10000).toFixed(1) + ' 万';
+                }
+            },
+            grid: { left: 40, right: 20, top: 30, bottom: 40 },
+            xAxis: {
+                type: 'category',
+                data: data.map(function(d) { return d.age; }),
+                axisLabel: { color: '#666' },
+                axisLine: { lineStyle: { color: '#ddd' } }
+            },
+            yAxis: {
+                type: 'value',
+                axisLabel: {
+                    formatter: function(val) { return val / 10000 + '万'; },
+                    color: '#666'
+                },
+                splitLine: { lineStyle: { color: '#eee' } }
+            },
+            series: [{
+                name: '资产',
+                type: 'line',
+                data: data.map(function(d) { return d.asset; }),
+                smooth: true,
+                lineStyle: { width: 3 },
+                areaStyle: { opacity: 0.1 },
+                symbol: 'none',
+                markLine: {
+                    silent: true,
+                    lineStyle: { type: 'dashed' },
+                    data: [{ yAxis: 0, name: '归零线' }]
+                }
+            }]
+        };
+
+        // Add ruin point marker if exists
+        var ruinPoint = data.find(function(d) { return d.asset <= 0; });
+        if (ruinPoint) {
+            option.series[0].markPoint = {
+                symbol: 'circle',
+                symbolSize: 10,
+                itemStyle: { color: '#ff4d4f' },
+                data: [{
+                    coord: [String(ruinPoint.age), ruinPoint.asset],
+                    value: '破产',
+                    label: {
+                        formatter: '资金耗尽',
+                        color: '#ff4d4f',
+                        position: 'top',
+                        fontSize: 13,
+                        fontWeight: 600
+                    }
+                }]
+            };
+        }
+
+        chart.setOption(option, true);
+    }
+
+    /**
+     * 渲染关键指标卡片
+     * @param {Object} result - SimulationResult
+     * @param {{ status: string, yearsLeft: number|null, ruinAge: number|null }} statusInfo
+     */
+    function renderMetrics(result, statusInfo) {
+        document.getElementById('metric-min-asset').textContent = (result.minAsset / 10000).toFixed(1) + ' 万';
+        document.getElementById('metric-min-asset-age').textContent = result.minAssetAge + '岁';
+        document.getElementById('metric-ruin-age').textContent = statusInfo.ruinAge !== null ? statusInfo.ruinAge + '岁' : '无';
+        document.getElementById('metric-years-left').textContent = statusInfo.yearsLeft !== null ? statusInfo.yearsLeft + '年' : '永续';
+    }
+
+    /**
+     * 渲染优化建议
+     * @param {Array} suggestions
+     */
+    function renderSuggestions(suggestions) {
+        var list = document.getElementById('suggestions-list');
+        list.innerHTML = '';
+        suggestions.forEach(function(s) {
+            var item = document.createElement('div');
+            item.className = 'suggestion-item';
+            var impact;
+            if (s.newYearsLeft === null) {
+                impact = '<span class="suggestion-highlight">永不破产</span>';
+            } else if (s.delta !== null && s.delta > 0) {
+                impact = '<span class="suggestion-highlight">多活 ' + s.delta + ' 年</span>';
+            } else if (s.delta !== null && s.delta <= 0) {
+                impact = '无明显改善';
+            } else {
+                impact = '可支撑 ' + s.newYearsLeft + ' 年';
+            }
+            item.innerHTML = '👉 ' + s.description + ' → ' + impact;
+            list.appendChild(item);
+        });
+    }
+
+    /**
+     * 从输入面板读取参数
+     * @returns {Object} InputParams
+     */
+    function readInputs() {
+        return {
+            currentAsset: parseFloat(document.getElementById('currentAsset').value),
+            annualExpense: parseFloat(document.getElementById('annualExpense').value),
+            returnRate: parseFloat(document.getElementById('returnRate').value) / 100,
+            inflationRate: parseFloat(document.getElementById('inflationRate').value) / 100,
+            passiveIncome: parseFloat(document.getElementById('passiveIncome').value),
+            currentAge: parseInt(document.getElementById('currentAge').value, 10)
+        };
+    }
+
+    /**
+     * 主计算流程：读取输入 → 校验 → 模拟 → 判定 → 建议 → 渲染
+     */
+    function runCalculation() {
+        var params = readInputs();
+        // Validate using raw percentage values for returnRate and inflationRate
+        var rawParams = {
+            currentAsset: params.currentAsset,
+            annualExpense: params.annualExpense,
+            returnRate: params.returnRate * 100,
+            inflationRate: params.inflationRate * 100,
+            passiveIncome: params.passiveIncome,
+            currentAge: params.currentAge
+        };
+        var validation = validateAll(rawParams);
+        if (!validation.valid) return;
+
+        var result = simulate(params);
+        var statusInfo = determineStatus(result);
+        var suggestions = generateSuggestions(params, result);
+
+        renderConclusion(statusInfo);
+        renderChart(result);
+        renderMetrics(result, statusInfo);
+        renderSuggestions(suggestions);
+    }
+
+    // ============================================================
+    // Initialization
+    // ============================================================
+    // Input event binding with debounce
+    const debouncedCalc = debounce(runCalculation, 300);
+    const inputFields = ['currentAsset', 'annualExpense', 'returnRate', 'inflationRate', 'passiveIncome', 'currentAge'];
+
+    inputFields.forEach(function(fieldId) {
+        const inputEl = document.getElementById(fieldId);
+        const errorEl = document.getElementById(fieldId + '-error');
+        inputEl.addEventListener('input', function() {
+            let rawValue;
+            if (fieldId === 'currentAge') {
+                rawValue = parseInt(inputEl.value, 10);
+            } else {
+                rawValue = parseFloat(inputEl.value);
+            }
+            // For returnRate/inflationRate, validate using the percentage value (raw input), not decimal
+            const validationValue = rawValue;
+            const result = validateField(fieldId, validationValue);
+            if (!result.valid) {
+                inputEl.classList.add('error');
+                errorEl.textContent = result.error;
+                errorEl.style.display = 'block';
+            } else {
+                inputEl.classList.remove('error');
+                errorEl.textContent = '';
+                errorEl.style.display = 'none';
+            }
+            debouncedCalc();
+        });
+    });
+
+    document.addEventListener('DOMContentLoaded', function() {
+        runCalculation();
+    });
+    </script>
+</body>
+</html>
