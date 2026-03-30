@@ -47,6 +47,23 @@
         .suggestion-item { background: #f5f7fa; border-radius: 8px; padding: 10px; margin-bottom: 10px; }
         .suggestion-item:last-child { margin-bottom: 0; }
         .suggestion-highlight { color: #1890ff; font-weight: 500; }
+
+        /* Mobile responsive */
+        @media (max-width: 480px) {
+            .container { padding: 12px; }
+            .page-title { font-size: 20px; margin-bottom: 12px; }
+            .input-row { flex-direction: column; align-items: flex-start; gap: 4px; margin-bottom: 14px; }
+            .input-field { width: 100%; text-align: left; font-size: 16px; padding: 10px 12px; }
+            .input-error { text-align: left; }
+            .conclusion { padding: 16px; }
+            .conclusion-title { font-size: 18px; }
+            .conclusion-sub { font-size: 14px; }
+            #asset-chart { height: 240px; }
+            .metrics { flex-wrap: wrap; gap: 12px; padding: 12px; }
+            .metric-item { flex: 0 0 calc(50% - 6px); }
+            .metric-value { font-size: 16px; }
+            .suggestion-item { font-size: 14px; }
+        }
     </style>
 </head>
 <body>
@@ -409,6 +426,11 @@
         }
 
         chart.setOption(option, true);
+
+        // Auto-resize chart on window resize
+        window.addEventListener('resize', function() {
+            chart.resize();
+        });
     }
 
     /**
